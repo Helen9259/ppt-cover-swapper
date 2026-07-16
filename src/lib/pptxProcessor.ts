@@ -1,21 +1,9 @@
 import JSZip from 'jszip';
-import { fitImageWithinSlide } from './imageFit';
 
 const NS_CONTENT_TYPES = 'http://schemas.openxmlformats.org/package/2006/content-types';
 const NS_RELATIONSHIPS = 'http://schemas.openxmlformats.org/package/2006/relationships';
 const REL_TYPE_IMAGE = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image';
 const REL_TYPE_SLIDE = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide';
-
-const EXTENSION_CONTENT_TYPES: Record<string, string> = {
-  png: 'image/png',
-  jpg: 'image/jpeg',
-  jpeg: 'image/jpeg',
-  gif: 'image/gif',
-  bmp: 'image/bmp',
-  tif: 'image/tiff',
-  tiff: 'image/tiff',
-  webp: 'image/webp',
-};
 
 class PptxStructureError extends Error {}
 
@@ -87,21 +75,6 @@ export async function getSlideDimensions(pptxFile: File): Promise<{ widthEmu: nu
   return { widthEmu: Number(cx), heightEmu: Number(cy) };
 }
 
-function getFileExtension(file: File): string {
-  const nameMatch = /\.([a-zA-Z0-9]+)$/.exec(file.name);
-  if (nameMatch) return nameMatch[1].toLowerCase();
-  const typeMatch = /^image\/([a-zA-Z0-9]+)$/.exec(file.type);
-  if (typeMatch) return typeMatch[1] === 'jpg' ? 'jpeg' : typeMatch[1];
-  return 'png';
-}
-
-async function getImageDimensions(file: File): Promise<{ width: number; height: number }> {
-  const bitmap = await createImageBitmap(file);
-  const dims = { width: bitmap.width, height: bitmap.height };
-  bitmap.close();
-  return dims;
-}
-
 function nextRelationshipId(relsDoc: Document): string {
   const ids = Array.from(relsDoc.getElementsByTagName('Relationship'))
     .map((r) => r.getAttribute('Id') || '')
@@ -119,16 +92,15 @@ function nextShapeId(slideDoc: Document): number {
   return max + 1;
 }
 
-function ensureContentType(contentTypesDoc: Document, extension: string): void {
-  const mimeType = EXTENSION_CONTENT_TYPES[extension] ?? 'image/png';
+function ensurePngContentType(contentTypesDoc: Document): void {
   const existing = Array.from(contentTypesDoc.getElementsByTagName('Default')).find(
-    (el) => el.getAttribute('Extension')?.toLowerCase() === extension.toLowerCase(),
+    (el) => el.getAttribute('Extension')?.toLowerCase() === 'png',
   );
   if (existing) return;
 
   const defaultEl = contentTypesDoc.createElementNS(NS_CONTENT_TYPES, 'Default');
-  defaultEl.setAttribute('Extension', extension);
-  defaultEl.setAttribute('ContentType', mimeType);
+  defaultEl.setAttribute('Extension', 'png');
+  defaultEl.setAttribute('ContentType', 'image/png');
   contentTypesDoc.documentElement.appendChild(defaultEl);
 }
 
@@ -139,7 +111,13 @@ function buildRelsDoc(): Document {
   );
 }
 
-export async function overlayImageOnFirstSlide(pptxFile: File, overlayImage: File): Promise<Blob> {
+/**
+ * Re-inserts a captured PNG of the first slide back onto that same slide, sized to
+ * fill it exactly (offset 0,0 / extent = slide size). Since the capture was rendered
+ * from the slide itself, its aspect ratio always matches the slide's, so no fit
+ * calculation is needed — the image simply covers everything beneath it.
+ */
+export async function flattenFirstSlideWithCapturedImage(pptxFile: File, capturedImage: Blob): Promise<Blob> {
   const zip = await loadZip(pptxFile);
 
   const { widthEmu: slideWidthEmu, heightEmu: slideHeightEmu } = await getSlideDimensions(pptxFile);
@@ -151,15 +129,7 @@ export async function overlayImageOnFirstSlide(pptxFile: File, overlayImage: Fil
     throw new PptxStructureError(`슬라이드에서 도형 트리(spTree)를 찾을 수 없습니다: ${slidePath}`);
   }
 
-  const { width: imgWidth, height: imgHeight } = await getImageDimensions(overlayImage);
-  const fit = fitImageWithinSlide(imgWidth, imgHeight, slideWidthEmu, slideHeightEmu);
-
-  // Clamp defensively in case of rounding overflow.
-  const offsetXEmu = Math.max(0, Math.min(fit.offsetXEmu, slideWidthEmu - fit.widthEmu));
-  const offsetYEmu = Math.max(0, Math.min(fit.offsetYEmu, slideHeightEmu - fit.heightEmu));
-
-  const extension = getFileExtension(overlayImage);
-  const mediaFileName = `imageOverlay_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${extension}`;
+  const mediaFileName = `capturedCover_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.png`;
   const mediaPath = `ppt/media/${mediaFileName}`;
 
   const slideDir = slidePath.slice(0, slidePath.lastIndexOf('/'));
@@ -175,12 +145,12 @@ export async function overlayImageOnFirstSlide(pptxFile: File, overlayImage: Fil
   relsDoc.documentElement.appendChild(relEl);
 
   const contentTypesDoc = await readXml(zip, '[Content_Types].xml');
-  ensureContentType(contentTypesDoc, extension);
+  ensurePngContentType(contentTypesDoc);
 
   const shapeId = nextShapeId(slideDoc);
   const picXml = `<p:pic xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <p:nvPicPr>
-    <p:cNvPr id="${shapeId}" name="Cover Overlay Image"/>
+    <p:cNvPr id="${shapeId}" name="Flattened Cover Image"/>
     <p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr>
     <p:nvPr/>
   </p:nvPicPr>
@@ -190,8 +160,8 @@ export async function overlayImageOnFirstSlide(pptxFile: File, overlayImage: Fil
   </p:blipFill>
   <p:spPr>
     <a:xfrm>
-      <a:off x="${offsetXEmu}" y="${offsetYEmu}"/>
-      <a:ext cx="${fit.widthEmu}" cy="${fit.heightEmu}"/>
+      <a:off x="0" y="0"/>
+      <a:ext cx="${slideWidthEmu}" cy="${slideHeightEmu}"/>
     </a:xfrm>
     <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
   </p:spPr>
@@ -203,7 +173,7 @@ export async function overlayImageOnFirstSlide(pptxFile: File, overlayImage: Fil
   const picNode = slideDoc.importNode(picDoc.documentElement, true);
   spTree.appendChild(picNode);
 
-  const imageBytes = await overlayImage.arrayBuffer();
+  const imageBytes = await capturedImage.arrayBuffer();
   zip.file(mediaPath, imageBytes);
   zip.file(relsPath, serializeXml(relsDoc));
   zip.file('[Content_Types].xml', serializeXml(contentTypesDoc));

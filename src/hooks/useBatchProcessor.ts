@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { OverlayImage, PptxFileItem } from '../types';
-import { getSlideDimensions, overlayImageOnFirstSlide } from '../lib/pptxProcessor';
-import { renderFirstSlideThumbnail } from '../lib/pptxPreview';
+import type { PptxFileItem } from '../types';
+import { flattenFirstSlideWithCapturedImage, getSlideDimensions } from '../lib/pptxProcessor';
+import { captureFirstSlideAsImage } from '../lib/pptxCapture';
 
 function makeId(): string {
   return crypto.randomUUID();
@@ -9,7 +9,6 @@ function makeId(): string {
 
 export function useBatchProcessor() {
   const [items, setItems] = useState<PptxFileItem[]>([]);
-  const [overlayImage, setOverlayImageState] = useState<OverlayImage | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
 
@@ -21,15 +20,17 @@ export function useBatchProcessor() {
   }, []);
 
   const analyzeFile = useCallback(async (id: string, file: File) => {
-    updateItem(id, { status: 'rendering-preview' });
+    updateItem(id, { status: 'capturing' });
     try {
       const { widthEmu, heightEmu } = await getSlideDimensions(file);
-      const beforeThumbnailUrl = await renderFirstSlideThumbnail(file);
+      const capturedImageBlob = await captureFirstSlideAsImage(file);
+      const originalThumbnailUrl = URL.createObjectURL(capturedImageBlob);
       updateItem(id, {
         status: 'ready-to-process',
         slideWidthEmu: widthEmu,
         slideHeightEmu: heightEmu,
-        beforeThumbnailUrl,
+        capturedImageBlob,
+        originalThumbnailUrl,
       });
     } catch (e) {
       updateItem(id, {
@@ -56,47 +57,14 @@ export function useBatchProcessor() {
   const removeFile = useCallback((id: string) => {
     setItems((prev) => {
       const target = prev.find((item) => item.id === id);
-      if (target?.beforeThumbnailUrl) URL.revokeObjectURL(target.beforeThumbnailUrl);
-      if (target?.afterThumbnailUrl) URL.revokeObjectURL(target.afterThumbnailUrl);
+      if (target?.originalThumbnailUrl) URL.revokeObjectURL(target.originalThumbnailUrl);
+      if (target?.flattenedThumbnailUrl) URL.revokeObjectURL(target.flattenedThumbnailUrl);
       return prev.filter((item) => item.id !== id);
     });
   }, []);
 
-  const setOverlayImage = useCallback(async (file: File) => {
-    const previewUrl = URL.createObjectURL(file);
-    const bitmap = await createImageBitmap(file);
-    const naturalWidth = bitmap.width;
-    const naturalHeight = bitmap.height;
-    bitmap.close();
-
-    setOverlayImageState((prev) => {
-      if (prev?.previewUrl) URL.revokeObjectURL(prev.previewUrl);
-      return { file, previewUrl, naturalWidth, naturalHeight };
-    });
-
-    // Invalidate previously-processed results so a stale image isn't shipped in the zip.
-    setItems((prev) =>
-      prev.map((item) => {
-        if (item.status !== 'done') return item;
-        if (item.afterThumbnailUrl) URL.revokeObjectURL(item.afterThumbnailUrl);
-        return { ...item, status: 'ready-to-process', processedBlob: undefined, afterThumbnailUrl: undefined };
-      }),
-    );
-  }, []);
-
-  const clearOverlayImage = useCallback(() => {
-    setOverlayImageState((prev) => {
-      if (prev?.previewUrl) URL.revokeObjectURL(prev.previewUrl);
-      return null;
-    });
-  }, []);
-
   const processAll = useCallback(async () => {
-    const current = itemsRef.current;
-    const image = overlayImage;
-    if (!image) return;
-
-    const toProcess = current.filter((item) => item.status === 'ready-to-process');
+    const toProcess = itemsRef.current.filter((item) => item.status === 'ready-to-process');
     if (toProcess.length === 0) return;
 
     setIsProcessing(true);
@@ -106,9 +74,13 @@ export function useBatchProcessor() {
     for (const item of toProcess) {
       updateItem(item.id, { status: 'processing' });
       try {
-        const processedBlob = await overlayImageOnFirstSlide(item.file, image.file);
-        const afterThumbnailUrl = await renderFirstSlideThumbnail(processedBlob);
-        updateItem(item.id, { status: 'done', processedBlob, afterThumbnailUrl });
+        if (!item.capturedImageBlob) {
+          throw new Error('캡처된 이미지가 없습니다.');
+        }
+        const processedBlob = await flattenFirstSlideWithCapturedImage(item.file, item.capturedImageBlob);
+        const flattenedCapture = await captureFirstSlideAsImage(processedBlob);
+        const flattenedThumbnailUrl = URL.createObjectURL(flattenedCapture);
+        updateItem(item.id, { status: 'done', processedBlob, flattenedThumbnailUrl });
       } catch (e) {
         updateItem(item.id, {
           status: 'error',
@@ -120,26 +92,23 @@ export function useBatchProcessor() {
     }
 
     setIsProcessing(false);
-  }, [overlayImage, updateItem]);
+  }, [updateItem]);
 
   useEffect(() => {
     return () => {
       itemsRef.current.forEach((item) => {
-        if (item.beforeThumbnailUrl) URL.revokeObjectURL(item.beforeThumbnailUrl);
-        if (item.afterThumbnailUrl) URL.revokeObjectURL(item.afterThumbnailUrl);
+        if (item.originalThumbnailUrl) URL.revokeObjectURL(item.originalThumbnailUrl);
+        if (item.flattenedThumbnailUrl) URL.revokeObjectURL(item.flattenedThumbnailUrl);
       });
     };
   }, []);
 
   return {
     items,
-    overlayImage,
     isProcessing,
     progress,
     addFiles,
     removeFile,
-    setOverlayImage,
-    clearOverlayImage,
     processAll,
   };
 }

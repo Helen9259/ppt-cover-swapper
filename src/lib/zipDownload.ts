@@ -11,5 +11,5 @@ export async function downloadAllAsZip(items: PptxFileItem[]): Promise<void> {
   }
 
   const blob = await zip.generateAsync({ type: 'blob' });
-  saveAs(blob, 'ppt_covers_swapped.zip');
+  saveAs(blob, 'ppt_covers_flattened.zip');
 }

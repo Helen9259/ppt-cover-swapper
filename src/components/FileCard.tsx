@@ -7,9 +7,9 @@ interface FileCardProps {
 
 const STATUS_LABEL: Record<PptxFileItem['status'], string> = {
   pending: '대기 중',
-  'rendering-preview': '미리보기 생성 중…',
+  capturing: '캡처 중…',
   'ready-to-process': '처리 대기',
-  processing: '처리 중…',
+  processing: '플랫화 중…',
   done: '완료',
   error: '오류',
 };
@@ -19,17 +19,17 @@ export default function FileCard({ item, onRemove }: FileCardProps) {
     <div className={`file-card file-card--${item.status}`}>
       <div className="file-card__thumbnails">
         <div className="file-card__thumb">
-          <span className="file-card__thumb-label">Before</span>
-          {item.beforeThumbnailUrl ? (
-            <img src={item.beforeThumbnailUrl} alt={`${item.fileName} 원본 표지`} />
+          <span className="file-card__thumb-label">원본</span>
+          {item.originalThumbnailUrl ? (
+            <img src={item.originalThumbnailUrl} alt={`${item.fileName} 원본 표지`} />
           ) : (
             <div className="file-card__thumb-placeholder" />
           )}
         </div>
         <div className="file-card__thumb">
-          <span className="file-card__thumb-label">After</span>
-          {item.afterThumbnailUrl ? (
-            <img src={item.afterThumbnailUrl} alt={`${item.fileName} 변경된 표지`} />
+          <span className="file-card__thumb-label">플랫화 후</span>
+          {item.flattenedThumbnailUrl ? (
+            <img src={item.flattenedThumbnailUrl} alt={`${item.fileName} 플랫화된 표지`} />
           ) : (
             <div className="file-card__thumb-placeholder" />
           )}

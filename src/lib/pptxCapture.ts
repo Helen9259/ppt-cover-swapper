@@ -12,15 +12,14 @@ function ensureWasmInitialized(): Promise<void> {
   return wasmInitPromise;
 }
 
-/** Render the first slide of a PPTX (File or Blob) to a PNG object URL. */
-export async function renderFirstSlideThumbnail(pptxData: File | Blob): Promise<string> {
+/** Render the first slide of a PPTX (File or Blob) to a PNG Blob. */
+export async function captureFirstSlideAsImage(pptxData: File | Blob): Promise<Blob> {
   await ensureWasmInitialized();
   const buffer = await pptxData.arrayBuffer();
-  const report = await convertPptxToPng(new Uint8Array(buffer), { slides: [1], width: 480 });
+  const report = await convertPptxToPng(new Uint8Array(buffer), { slides: [1], width: 1920 });
   const slide = report.slides[0];
   if (!slide) {
-    throw new Error('슬라이드 미리보기를 렌더링할 수 없습니다.');
+    throw new Error('첫 번째 슬라이드를 캡처할 수 없습니다.');
   }
-  const blob = new Blob([slide.png as unknown as BlobPart], { type: 'image/png' });
-  return URL.createObjectURL(blob);
+  return new Blob([slide.png as unknown as BlobPart], { type: 'image/png' });
 }
