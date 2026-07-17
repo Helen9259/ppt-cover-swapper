@@ -78,6 +78,17 @@ body {
   font-size: 0.85rem;
 }
 
+.local-fonts__error {
+  flex-basis: 100%;
+  font-size: 0.8rem;
+  color: var(--error);
+  line-height: 1.5;
+}
+
+.local-fonts__error code {
+  font-family: var(--mono, ui-monospace, monospace);
+}
+
 /* Dropzone */
 .dropzone {
   border: 2px dashed var(--border);

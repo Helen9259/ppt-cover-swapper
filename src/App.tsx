@@ -16,6 +16,7 @@ function App() {
     localFontsSupported,
     localFontsGranted,
     localFontCount,
+    localFontsError,
     enableLocalFonts,
   } = useBatchProcessor();
 
@@ -38,6 +39,7 @@ function App() {
           supported={localFontsSupported}
           granted={localFontsGranted}
           fontCount={localFontCount}
+          errorMessage={localFontsError}
           onEnable={() => void enableLocalFonts()}
         />
         <FileDropzone onFilesSelected={addFiles} />

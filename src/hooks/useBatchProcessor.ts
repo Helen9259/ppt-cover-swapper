@@ -18,6 +18,7 @@ export function useBatchProcessor() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [localFontsGranted, setLocalFontsGranted] = useState(false);
+  const [localFontsError, setLocalFontsError] = useState<string | null>(null);
   const [localFontCount, setLocalFontCount] = useState(0);
 
   const itemsRef = useRef(items);
@@ -76,9 +77,10 @@ export function useBatchProcessor() {
 
   /** Must be called from a user gesture (button click) — the permission prompt requires it. */
   const enableLocalFonts = useCallback(async () => {
-    const { granted, fontCount } = await requestLocalFontAccess();
+    const { granted, fontCount, errorMessage } = await requestLocalFontAccess();
     setLocalFontsGranted(granted);
     setLocalFontCount(fontCount);
+    setLocalFontsError(granted ? null : errorMessage ?? '알 수 없는 이유로 권한을 가져오지 못했습니다.');
     if (!granted) return;
 
     // Re-capture already-uploaded files so they pick up locally installed fonts too.
@@ -143,6 +145,7 @@ export function useBatchProcessor() {
     localFontsSupported: isLocalFontAccessSupported(),
     localFontsGranted,
     localFontCount,
+    localFontsError,
     enableLocalFonts,
   };
 }

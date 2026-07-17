@@ -2,10 +2,11 @@ interface LocalFontAccessProps {
   supported: boolean;
   granted: boolean;
   fontCount: number;
+  errorMessage: string | null;
   onEnable: () => void;
 }
 
-export default function LocalFontAccess({ supported, granted, fontCount, onEnable }: LocalFontAccessProps) {
+export default function LocalFontAccess({ supported, granted, fontCount, errorMessage, onEnable }: LocalFontAccessProps) {
   if (!supported) {
     return (
       <p className="local-fonts local-fonts--unsupported">
@@ -33,6 +34,15 @@ export default function LocalFontAccess({ supported, granted, fontCount, onEnabl
       <button type="button" onClick={onEnable}>
         로컬 폰트 읽기 허용
       </button>
+      {errorMessage && (
+        <p className="local-fonts__error">
+          권한을 가져오지 못했습니다: {errorMessage}
+          <br />
+          브라우저 주소창 왼쪽 아이콘 → 사이트 설정에서 "글꼴" 권한이 차단으로 되어 있지 않은지,
+          또는 <code>chrome://settings/content/localFonts</code>에서 전체적으로 차단되어 있지 않은지
+          확인해주세요.
+        </p>
+      )}
     </div>
   );
 }
