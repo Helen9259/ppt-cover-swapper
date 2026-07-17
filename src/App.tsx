@@ -3,22 +3,9 @@ import FileDropzone from './components/FileDropzone';
 import FileListPreview from './components/FileListPreview';
 import ProcessButton from './components/ProcessButton';
 import DownloadAllButton from './components/DownloadAllButton';
-import LocalFontAccess from './components/LocalFontAccess';
 
 function App() {
-  const {
-    items,
-    isProcessing,
-    progress,
-    addFiles,
-    removeFile,
-    processAll,
-    localFontsSupported,
-    localFontsGranted,
-    localFontCount,
-    localFontsError,
-    enableLocalFonts,
-  } = useBatchProcessor();
+  const { items, isProcessing, progress, addFiles, removeFile, processAll } = useBatchProcessor();
 
   const readyCount = items.filter((item) => item.status === 'ready-to-process').length;
 
@@ -35,13 +22,6 @@ function App() {
 
       <section className="app__section">
         <h2>1. PPTX 파일 업로드</h2>
-        <LocalFontAccess
-          supported={localFontsSupported}
-          granted={localFontsGranted}
-          fontCount={localFontCount}
-          errorMessage={localFontsError}
-          onEnable={() => void enableLocalFonts()}
-        />
         <FileDropzone onFilesSelected={addFiles} />
       </section>
 

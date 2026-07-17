@@ -59,36 +59,6 @@ body {
   margin-bottom: 12px;
 }
 
-/* Local font access */
-.local-fonts {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  font-size: 0.9rem;
-  color: var(--text-muted);
-  margin-bottom: 12px;
-}
-
-.local-fonts--granted {
-  color: var(--success);
-}
-
-.local-fonts--unsupported {
-  font-size: 0.85rem;
-}
-
-.local-fonts__error {
-  flex-basis: 100%;
-  font-size: 0.8rem;
-  color: var(--error);
-  line-height: 1.5;
-}
-
-.local-fonts__error code {
-  font-family: var(--mono, ui-monospace, monospace);
-}
-
 /* Dropzone */
 .dropzone {
   border: 2px dashed var(--border);
