@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@expo-google-fonts/noto-sans-kr": "^0.4.3",
+    "@noonnu/cafe24-dangdanghae": "^0.1.0",
+    "@noonnu/cafe24-oneprettynight": "^0.1.0",
     "@resvg/resvg-wasm": "^2.6.2",
     "file-saver": "^2.0.5",
     "jszip": "^3.10.1",
