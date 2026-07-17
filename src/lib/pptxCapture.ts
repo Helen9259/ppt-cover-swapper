@@ -3,6 +3,7 @@ import resvgWasmUrl from '@resvg/resvg-wasm/index_bg.wasm?url';
 import notoSansKrUrl from '@expo-google-fonts/noto-sans-kr/400Regular/NotoSansKR_400Regular.ttf?url';
 import cafe24OneprettynightUrl from '@noonnu/cafe24-oneprettynight/fonts/cafe24oneprettynight-normal.woff?url';
 import cafe24DangdanghaeUrl from '@noonnu/cafe24-dangdanghae/fonts/cafe24dangdanghae-normal.woff?url';
+import { preparePptxForRendering } from './pptxProcessor';
 
 let wasmInitPromise: Promise<void> | null = null;
 
@@ -56,8 +57,12 @@ function ensureFontsLoaded(): Promise<FontBuffer[]> {
 
 /** Render the first slide of a PPTX (File or Blob) to a PNG Blob. */
 export async function captureFirstSlideAsImage(pptxData: File | Blob): Promise<Blob> {
-  const [, fonts] = await Promise.all([ensureWasmInitialized(), ensureFontsLoaded()]);
-  const buffer = await pptxData.arrayBuffer();
+  const [, fonts, renderablePptx] = await Promise.all([
+    ensureWasmInitialized(),
+    ensureFontsLoaded(),
+    preparePptxForRendering(pptxData),
+  ]);
+  const buffer = await renderablePptx.arrayBuffer();
   const report = await convertPptxToPng(new Uint8Array(buffer), { slides: [1], width: 1920, fonts });
   const slide = report.slides[0];
   if (!slide) {

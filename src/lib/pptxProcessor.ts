@@ -7,7 +7,7 @@ const REL_TYPE_SLIDE = 'http://schemas.openxmlformats.org/officeDocument/2006/re
 
 class PptxStructureError extends Error {}
 
-async function loadZip(pptxFile: File): Promise<JSZip> {
+async function loadZip(pptxFile: File | Blob): Promise<JSZip> {
   const buffer = await pptxFile.arrayBuffer();
   try {
     return await JSZip.loadAsync(buffer);
@@ -63,7 +63,7 @@ async function resolveFirstSlidePath(zip: JSZip): Promise<string> {
   return normalized;
 }
 
-export async function getSlideDimensions(pptxFile: File): Promise<{ widthEmu: number; heightEmu: number }> {
+export async function getSlideDimensions(pptxFile: File | Blob): Promise<{ widthEmu: number; heightEmu: number }> {
   const zip = await loadZip(pptxFile);
   const presDoc = await readXml(zip, 'ppt/presentation.xml');
   const sldSz = presDoc.getElementsByTagName('p:sldSz')[0];
@@ -73,6 +73,53 @@ export async function getSlideDimensions(pptxFile: File): Promise<{ widthEmu: nu
     throw new PptxStructureError('슬라이드 크기(sldSz)를 찾을 수 없습니다.');
   }
   return { widthEmu: Number(cx), heightEmu: Number(cy) };
+}
+
+// Matches pptx-glimpse's own (small) PRESET_COLOR_HEX table exactly. pptx-glimpse
+// resolves <a:prstClr> for shape fills but not for text run colors (its
+// parseRunProperties reads solidFill via a color parser that only checks
+// srgbClr/schemeClr/sysClr) — a run whose color is set via <a:prstClr val="white"/>
+// silently loses its color and renders in the renderer's default (black) instead.
+// Rewriting prstClr to the equivalent srgbClr before handing the file to pptx-glimpse
+// sidesteps that gap without needing to patch the library itself.
+const PRESET_COLOR_HEX: Record<string, string> = {
+  black: '000000',
+  white: 'FFFFFF',
+  red: 'FF0000',
+  green: '008000',
+  blue: '0000FF',
+  yellow: 'FFFF00',
+  cyan: '00FFFF',
+  magenta: 'FF00FF',
+};
+
+function patchPresetColorsToSrgb(xml: string): string {
+  return xml
+    .replace(/<a:prstClr\s+val="([a-zA-Z]+)"\s*\/>/g, (match, name: string) => {
+      const hex = PRESET_COLOR_HEX[name];
+      return hex ? `<a:srgbClr val="${hex}"/>` : match;
+    })
+    .replace(/<a:prstClr\s+val="([a-zA-Z]+)"\s*>([\s\S]*?)<\/a:prstClr>/g, (match, name: string, inner: string) => {
+      const hex = PRESET_COLOR_HEX[name];
+      return hex ? `<a:srgbClr val="${hex}">${inner}</a:srgbClr>` : match;
+    });
+}
+
+/**
+ * Returns a copy of the PPTX with known pptx-glimpse rendering gaps patched around
+ * (currently: preset text colors) — pass this, not the original file, to
+ * captureFirstSlideAsImage. The returned file is for rendering only; the original is
+ * still what gets embedded/shipped, so this never affects the downloaded PPTX itself.
+ */
+export async function preparePptxForRendering(pptxData: File | Blob): Promise<Blob> {
+  const zip = await loadZip(pptxData);
+  const slidePath = await resolveFirstSlidePath(zip);
+  const slideXml = await zip.file(slidePath)!.async('string');
+  const patched = patchPresetColorsToSrgb(slideXml);
+  if (patched !== slideXml) {
+    zip.file(slidePath, patched);
+  }
+  return zip.generateAsync({ type: 'blob' });
 }
 
 function nextRelationshipId(relsDoc: Document): string {

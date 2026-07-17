@@ -30,6 +30,15 @@
 옵션, `ppt/fonts/*.fntdata`)는 지원하지 않습니다. 이 폰트 데이터는 OOXML 스펙에 따라 난독화되어
 있어 신뢰할 수 있는 참고 구현 없이 직접 구현하는 것은 위험 부담이 있다고 판단해 보류했습니다.
 
+## 알려진 렌더링 보정
+
+pptx-glimpse는 도형 채우기 색상에는 `<a:prstClr>`(사전 정의 색상 이름, 예: `white`/`black`)을
+지원하지만, 텍스트 run의 색상 파서는 이를 확인하지 않아 `<a:prstClr>`로 지정된 텍스트 색이
+조용히 무시되고 기본값(검정)으로 렌더링되는 경우가 있습니다. `preparePptxForRendering`
+(`src/lib/pptxProcessor.ts`)이 캡처 직전에 첫 슬라이드 XML의 `<a:prstClr>`를 동일한 값의
+`<a:srgbClr>`로 미리 변환해 이 문제를 우회합니다 — 렌더링용으로만 사용되는 사본에 적용되며,
+실제로 저장/다운로드되는 PPTX 파일 자체는 건드리지 않습니다.
+
 ## 기술 스택
 
 - Vite + React 18 + TypeScript
