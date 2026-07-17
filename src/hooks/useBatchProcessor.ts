@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PptxFileItem } from '../types';
-import { flattenFirstSlideWithCapturedImage, getSlideDimensions } from '../lib/pptxProcessor';
+import { extractFontFamilyNames, flattenFirstSlideWithCapturedImage, getSlideDimensions } from '../lib/pptxProcessor';
 import { captureFirstSlideAsImage } from '../lib/pptxCapture';
+import {
+  getLocalFontBuffers,
+  hasLocalFontAccess,
+  isLocalFontAccessSupported,
+  requestLocalFontAccess,
+} from '../lib/localFonts';
 
 function makeId(): string {
   return crypto.randomUUID();
@@ -11,6 +17,8 @@ export function useBatchProcessor() {
   const [items, setItems] = useState<PptxFileItem[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [localFontsGranted, setLocalFontsGranted] = useState(false);
+  const [localFontCount, setLocalFontCount] = useState(0);
 
   const itemsRef = useRef(items);
   itemsRef.current = items;
@@ -23,7 +31,10 @@ export function useBatchProcessor() {
     updateItem(id, { status: 'capturing' });
     try {
       const { widthEmu, heightEmu } = await getSlideDimensions(file);
-      const capturedImageBlob = await captureFirstSlideAsImage(file);
+      const localFonts = hasLocalFontAccess()
+        ? await getLocalFontBuffers(await extractFontFamilyNames(file))
+        : [];
+      const capturedImageBlob = await captureFirstSlideAsImage(file, localFonts);
       const originalThumbnailUrl = URL.createObjectURL(capturedImageBlob);
       updateItem(id, {
         status: 'ready-to-process',
@@ -63,6 +74,22 @@ export function useBatchProcessor() {
     });
   }, []);
 
+  /** Must be called from a user gesture (button click) — the permission prompt requires it. */
+  const enableLocalFonts = useCallback(async () => {
+    const { granted, fontCount } = await requestLocalFontAccess();
+    setLocalFontsGranted(granted);
+    setLocalFontCount(fontCount);
+    if (!granted) return;
+
+    // Re-capture already-uploaded files so they pick up locally installed fonts too.
+    const toRecapture = itemsRef.current.filter(
+      (item) => item.status === 'ready-to-process' || item.status === 'error',
+    );
+    toRecapture.forEach((item) => {
+      void analyzeFile(item.id, item.file);
+    });
+  }, [analyzeFile]);
+
   const processAll = useCallback(async () => {
     const toProcess = itemsRef.current.filter((item) => item.status === 'ready-to-process');
     if (toProcess.length === 0) return;
@@ -77,8 +104,11 @@ export function useBatchProcessor() {
         if (!item.capturedImageBlob) {
           throw new Error('캡처된 이미지가 없습니다.');
         }
+        const localFonts = hasLocalFontAccess()
+          ? await getLocalFontBuffers(await extractFontFamilyNames(item.file))
+          : [];
         const processedBlob = await flattenFirstSlideWithCapturedImage(item.file, item.capturedImageBlob);
-        const flattenedCapture = await captureFirstSlideAsImage(processedBlob);
+        const flattenedCapture = await captureFirstSlideAsImage(processedBlob, localFonts);
         const flattenedThumbnailUrl = URL.createObjectURL(flattenedCapture);
         updateItem(item.id, { status: 'done', processedBlob, flattenedThumbnailUrl });
       } catch (e) {
@@ -110,5 +140,9 @@ export function useBatchProcessor() {
     addFiles,
     removeFile,
     processAll,
+    localFontsSupported: isLocalFontAccessSupported(),
+    localFontsGranted,
+    localFontCount,
+    enableLocalFonts,
   };
 }

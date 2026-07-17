@@ -18,6 +18,14 @@
 구조가 예상과 다른 PPTX 파일(예: 첫 슬라이드를 찾을 수 없는 경우)은 오류로 표시되며,
 나머지 파일 처리에는 영향을 주지 않습니다.
 
+## 폰트 렌더링
+
+브라우저는 PPTX가 참조하는 폰트를 자동으로 알지 못하므로, 기본적으로 Noto Sans KR(한글+영문)을
+대체 폰트로 내장해 사용합니다. Chrome/Edge에서는 "로컬 폰트 읽기 허용" 버튼으로 Local Font Access
+API 권한을 주면, 이 컴퓨터에 설치된 폰트 파일을 읽기 전용으로 읽어와 PPTX가 실제로 참조하는
+폰트와 정확히 일치할 때 그 폰트로 렌더링합니다 (설치되지 않은 폰트는 계속 대체 폰트로 표시됩니다).
+Safari/Firefox는 이 API를 지원하지 않아 항상 대체 폰트로 렌더링됩니다.
+
 ## 기술 스택
 
 - Vite + React 18 + TypeScript
@@ -25,6 +33,7 @@
 - 브라우저 내장 `DOMParser` / `XMLSerializer` — 슬라이드 XML 파싱 및 수정
 - [pptx-glimpse](https://github.com/hirokisakabe/pptx-glimpse) — 브라우저에서 PPTX 슬라이드를 PNG로 캡처/렌더링 (LibreOffice 불필요)
 - [file-saver](https://github.com/eligrey/FileSaver.js) — zip 다운로드 트리거
+- [Local Font Access API](https://developer.mozilla.org/en-US/docs/Web/API/Window/queryLocalFonts) (선택적) — 로컬 설치 폰트 읽기 (Chrome/Edge)
 
 ## 개발
 

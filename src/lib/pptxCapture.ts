@@ -33,9 +33,18 @@ function ensureFontsLoaded(): Promise<FontBuffer[]> {
   return fontsPromise;
 }
 
-/** Render the first slide of a PPTX (File or Blob) to a PNG Blob. */
-export async function captureFirstSlideAsImage(pptxData: File | Blob): Promise<Blob> {
-  const [, fonts] = await Promise.all([ensureWasmInitialized(), ensureFontsLoaded()]);
+/**
+ * Render the first slide of a PPTX (File or Blob) to a PNG Blob.
+ *
+ * `extraFonts` are tried before falling back to the bundled font — pass locally
+ * installed fonts here (see localFonts.ts) so exact family-name matches render with
+ * the real typeface instead of the Noto Sans KR substitute. The bundled font is kept
+ * first in registration order so it stays the deterministic default fallback for any
+ * name that matches nothing.
+ */
+export async function captureFirstSlideAsImage(pptxData: File | Blob, extraFonts: FontBuffer[] = []): Promise<Blob> {
+  const [, bundledFonts] = await Promise.all([ensureWasmInitialized(), ensureFontsLoaded()]);
+  const fonts = [...bundledFonts, ...extraFonts];
   const buffer = await pptxData.arrayBuffer();
   const report = await convertPptxToPng(new Uint8Array(buffer), { slides: [1], width: 1920, fonts });
   const slide = report.slides[0];
