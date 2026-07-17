@@ -55,18 +55,48 @@ function ensureFontsLoaded(): Promise<FontBuffer[]> {
   return fontsPromise;
 }
 
-/** Render the first slide of a PPTX (File or Blob) to a PNG Blob. */
-export async function captureFirstSlideAsImage(pptxData: File | Blob): Promise<Blob> {
-  const [, fonts, renderablePptx] = await Promise.all([
+const FONT_NOT_FOUND_PATTERN = /Font not found: "([^"]+)"/;
+
+function extractMissingFontNames(diagnostics: readonly { code: string; message: string }[]): string[] {
+  const names = new Set<string>();
+  for (const d of diagnostics) {
+    if (!d.code.endsWith('font.notFound')) continue;
+    const match = FONT_NOT_FOUND_PATTERN.exec(d.message);
+    if (match) names.add(match[1]);
+  }
+  return Array.from(names);
+}
+
+export interface SlideCapture {
+  blob: Blob;
+  /** Font family names the slide references that nothing in `extraFonts`/bundled fonts matched. */
+  missingFontNames: string[];
+}
+
+/**
+ * Render the first slide of a PPTX (File or Blob) to a PNG.
+ *
+ * `extraFonts` are tried before falling back to the bundled fonts — pass user-supplied
+ * font files here (see the "폰트 업로드" flow in useBatchProcessor.ts) so exact
+ * family-name matches render with the real typeface instead of the Noto Sans KR
+ * substitute. The bundled fonts are kept first in registration order so Noto Sans KR
+ * stays the deterministic default fallback for any name that matches nothing.
+ */
+export async function captureFirstSlideAsImage(pptxData: File | Blob, extraFonts: FontBuffer[] = []): Promise<SlideCapture> {
+  const [, bundledFonts, renderablePptx] = await Promise.all([
     ensureWasmInitialized(),
     ensureFontsLoaded(),
     preparePptxForRendering(pptxData),
   ]);
+  const fonts = [...bundledFonts, ...extraFonts];
   const buffer = await renderablePptx.arrayBuffer();
   const report = await convertPptxToPng(new Uint8Array(buffer), { slides: [1], width: 1920, fonts });
   const slide = report.slides[0];
   if (!slide) {
     throw new Error('첫 번째 슬라이드를 캡처할 수 없습니다.');
   }
-  return new Blob([slide.png as unknown as BlobPart], { type: 'image/png' });
+  return {
+    blob: new Blob([slide.png as unknown as BlobPart], { type: 'image/png' }),
+    missingFontNames: extractMissingFontNames(report.diagnostics),
+  };
 }

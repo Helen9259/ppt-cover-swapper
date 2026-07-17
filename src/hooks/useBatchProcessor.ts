@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { FontBuffer } from 'pptx-glimpse';
 import type { PptxFileItem } from '../types';
 import { flattenFirstSlideWithCapturedImage, getSlideDimensions } from '../lib/pptxProcessor';
 import { captureFirstSlideAsImage } from '../lib/pptxCapture';
@@ -14,16 +15,26 @@ export function useBatchProcessor() {
 
   const itemsRef = useRef(items);
   itemsRef.current = items;
+  // User-uploaded font files, keyed by the exact family name they were uploaded to
+  // resolve. Applies to every file for the rest of the session, not just the one that
+  // was missing it — most Korean PPT templates share the same brand fonts across files.
+  const providedFontsRef = useRef<FontBuffer[]>([]);
 
   const updateItem = useCallback((id: string, patch: Partial<PptxFileItem>) => {
     setItems((prev) => prev.map((item) => (item.id === id ? { ...item, ...patch } : item)));
   }, []);
 
   const analyzeFile = useCallback(async (id: string, file: File) => {
-    updateItem(id, { status: 'capturing' });
+    const previous = itemsRef.current.find((item) => item.id === id);
+    if (previous?.originalThumbnailUrl) URL.revokeObjectURL(previous.originalThumbnailUrl);
+    if (previous?.flattenedThumbnailUrl) URL.revokeObjectURL(previous.flattenedThumbnailUrl);
+    updateItem(id, { status: 'capturing', flattenedThumbnailUrl: undefined, processedBlob: undefined });
     try {
       const { widthEmu, heightEmu } = await getSlideDimensions(file);
-      const capturedImageBlob = await captureFirstSlideAsImage(file);
+      const { blob: capturedImageBlob, missingFontNames } = await captureFirstSlideAsImage(
+        file,
+        providedFontsRef.current,
+      );
       const originalThumbnailUrl = URL.createObjectURL(capturedImageBlob);
       updateItem(id, {
         status: 'ready-to-process',
@@ -31,6 +42,7 @@ export function useBatchProcessor() {
         slideHeightEmu: heightEmu,
         capturedImageBlob,
         originalThumbnailUrl,
+        missingFontNames,
       });
     } catch (e) {
       updateItem(id, {
@@ -63,6 +75,17 @@ export function useBatchProcessor() {
     });
   }, []);
 
+  /** Registers a user-supplied font file for `fontName` and re-captures every file that was missing it. */
+  const provideFont = useCallback(async (fontName: string, fontFile: File) => {
+    const data = await fontFile.arrayBuffer();
+    providedFontsRef.current = [...providedFontsRef.current, { name: fontName, data }];
+
+    const affected = itemsRef.current.filter((item) => item.missingFontNames?.includes(fontName));
+    affected.forEach((item) => {
+      void analyzeFile(item.id, item.file);
+    });
+  }, [analyzeFile]);
+
   const processAll = useCallback(async () => {
     const toProcess = itemsRef.current.filter((item) => item.status === 'ready-to-process');
     if (toProcess.length === 0) return;
@@ -78,7 +101,7 @@ export function useBatchProcessor() {
           throw new Error('캡처된 이미지가 없습니다.');
         }
         const processedBlob = await flattenFirstSlideWithCapturedImage(item.file, item.capturedImageBlob);
-        const flattenedCapture = await captureFirstSlideAsImage(processedBlob);
+        const { blob: flattenedCapture } = await captureFirstSlideAsImage(processedBlob, providedFontsRef.current);
         const flattenedThumbnailUrl = URL.createObjectURL(flattenedCapture);
         updateItem(item.id, { status: 'done', processedBlob, flattenedThumbnailUrl });
       } catch (e) {
@@ -110,5 +133,6 @@ export function useBatchProcessor() {
     addFiles,
     removeFile,
     processAll,
+    provideFont,
   };
 }

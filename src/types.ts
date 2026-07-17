@@ -18,4 +18,6 @@ export interface PptxFileItem {
   slideWidthEmu?: number;
   slideHeightEmu?: number;
   errorMessage?: string;
+  /** Font family names referenced by the slide that no bundled/provided font matched. */
+  missingFontNames?: string[];
 }
